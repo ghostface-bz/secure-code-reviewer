@@ -118,6 +118,11 @@ export const api = {
     return request<Finding[]>(`/scans/${id}/findings${qs}`);
   },
 
+  /** SSE endpoint URL for live scan progress — open with `new EventSource(...)` */
+  scanEventsUrl(id: string): string {
+    return `${API_BASE}/scans/${id}/events`;
+  },
+
   /** URL for GET /api/scans/{id}/report.sarif (use directly as href/download link) */
   sarifUrl(id: string): string {
     return `${API_BASE}/scans/${id}/report.sarif`;

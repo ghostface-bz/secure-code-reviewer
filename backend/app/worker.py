@@ -27,9 +27,10 @@ from pathlib import Path
 from rq import Worker
 from sqlalchemy import select
 
+from app import events
 from app.config import settings
 from app.db import SessionLocal
-from app.models import Finding, Scan, ScanStatus, SourceType
+from app.models import Finding, Scan, ScanStatus, Severity, SourceType
 from app.queue import redis_conn, scan_queue
 from app.scanners import gitleaks, semgrep, trivy
 from app.scanners.base import ScannerError
@@ -127,18 +128,34 @@ def _compute_content_hash(root: Path) -> str:
     return h.hexdigest()
 
 
+def _severity_counts(findings) -> dict[str, int]:
+    """Cumulative severity breakdown (matches the API's SeverityCounts shape)."""
+    counts = {s.value: 0 for s in Severity}
+    counts["total"] = 0
+    for f in findings:
+        sev = f.severity.value if isinstance(f.severity, Severity) else str(f.severity)
+        if sev in counts:
+            counts[sev] += 1
+        counts["total"] += 1
+    return counts
+
+
 def _run_one_scanner(module, name: str, scan_id: str) -> tuple[list[RawFinding], str | None]:
     """Run a single scanner; return (findings, error_or_None). Never raises."""
+    events.scanner_state(scan_id, name, "running")
     try:
         logger.info("scan %s: running %s", scan_id, name)
         findings = module.run(scan_id, scan_id)
         logger.info("scan %s: %s produced %d findings", scan_id, name, len(findings))
+        events.scanner_state(scan_id, name, "done", findings=len(findings))
         return findings, None
     except ScannerError as exc:
         logger.exception("scan %s: %s failed", scan_id, name)
+        events.scanner_state(scan_id, name, "error")
         return [], str(exc)
     except Exception as exc:  # noqa: BLE001 - isolate scanner failures
         logger.exception("scan %s: %s failed unexpectedly", scan_id, name)
+        events.scanner_state(scan_id, name, "error")
         return [], f"{name} scanner failed: {exc}"
 
 
@@ -199,6 +216,7 @@ def run_scan(scan_id: str) -> None:
         scan.status = ScanStatus.running
         scan.started_at = datetime.now(timezone.utc)
         db.commit()
+        events.scan_started(scan_id, [name for _module, name in SCANNERS])
 
         dest = _scan_data_dir(scan_id)
         try:
@@ -214,6 +232,7 @@ def run_scan(scan_id: str) -> None:
             scan.error = f"failed to prepare source: {exc}"
             scan.finished_at = datetime.now(timezone.utc)
             db.commit()
+            events.scan_finished(scan_id, "failed", _severity_counts([]))
             return
 
         # Content-hash cache: if identical code was already scanned, clone those
@@ -245,6 +264,7 @@ def run_scan(scan_id: str) -> None:
                 "scan %s: cache hit on %s (%d findings cloned)",
                 scan_id, cached.id, len(prior),
             )
+            events.scan_finished(scan_id, "completed", _severity_counts(prior))
             return
 
         findings, errors = _run_all_scanners(scan_id)
@@ -264,6 +284,7 @@ def run_scan(scan_id: str) -> None:
 
         scan.finished_at = datetime.now(timezone.utc)
         db.commit()
+        events.scan_finished(scan_id, scan.status.value, _severity_counts(findings))
         logger.info(
             "scan %s: completed with status=%s, %d findings, %d scanner errors",
             scan_id,

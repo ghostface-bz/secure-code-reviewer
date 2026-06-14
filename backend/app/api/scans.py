@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 import zipfile
@@ -9,12 +10,14 @@ from io import BytesIO
 from pathlib import Path
 from typing import Annotated
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
+from app import events
 from app.config import settings
 from app.db import get_db
 from app.models import Finding, Scan, ScanStatus, Severity, SourceType, Tool
@@ -180,6 +183,76 @@ def get_scan(scan_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> Sca
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found.")
     return _to_detail(db, scan)
+
+
+def _sse(event: str, data: str) -> str:
+    return f"event: {event}\ndata: {data}\n\n"
+
+
+@router.get("/{scan_id}/events")
+async def scan_events(scan_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> StreamingResponse:
+    """Server-Sent Events stream of live scan progress (replaces UI polling).
+
+    Emits a `snapshot` event with current per-scanner state, then live `data`
+    events ({type: scanner|scan, ...}) published by the worker, then `end`.
+    """
+    scan = db.get(Scan, scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found.")
+    initial_status = scan.status.value
+    sid = str(scan_id)
+
+    async def event_stream():
+        client = aioredis.from_url(settings.REDIS_URL)
+        pubsub = client.pubsub()
+        await pubsub.subscribe(events.channel(sid))
+        try:
+            snap = events.get_snapshot(sid)
+            yield _sse("snapshot", json.dumps(snap))
+
+            # Already terminal (incl. old scans with no snapshot) → nothing live to wait for.
+            if (snap.get("status") or initial_status) in ("completed", "failed"):
+                yield _sse("end", "{}")
+                return
+
+            while True:
+                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15.0)
+                if msg is None:
+                    yield ": ping\n\n"  # heartbeat keeps the connection alive
+                    continue
+                data = msg["data"]
+                if isinstance(data, bytes):
+                    data = data.decode("utf-8", errors="replace")
+                yield f"data: {data}\n\n"
+                try:
+                    ev = json.loads(data)
+                except ValueError:
+                    continue
+                if ev.get("type") == "scan" and ev.get("state") in ("completed", "failed"):
+                    yield _sse("end", "{}")
+                    break
+        finally:
+            try:
+                await pubsub.unsubscribe()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                await client.aclose()
+            except Exception:  # noqa: BLE001
+                try:
+                    await client.close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/{scan_id}/findings", response_model=list[FindingOut])

@@ -72,6 +72,22 @@ export interface HealthResponse {
   status: string;
 }
 
+// ---- Live scan progress (SSE) ----
+
+export type ScannerRunState = "pending" | "running" | "done" | "error";
+
+/** A live event on GET /api/scans/{id}/events (the default `message` stream). */
+export type ScanEvent =
+  | { type: "scanner"; scanner: Tool; state: ScannerRunState; findings?: number }
+  | { type: "scan"; state: ScanStatus; counts?: SeverityCounts };
+
+/** Decoded `snapshot` event — raw Redis hash (string values). */
+export interface ScanProgressSnapshot {
+  status?: ScanStatus;
+  counts?: string; // JSON-encoded SeverityCounts
+  [key: string]: string | undefined; // e.g. "scanner:semgrep", "findings:semgrep"
+}
+
 export const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
 
 export const TOOLS: Tool[] = ["gitleaks", "semgrep", "trivy"];

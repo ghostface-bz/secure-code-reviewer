@@ -1,32 +1,39 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiError, api } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import SeverityBadge from "../components/SeverityBadge";
+import ScannerProgress from "../components/ScannerProgress";
 import { SeveritySummaryCards } from "../components/SeveritySummary";
 import { SEVERITIES, TOOLS } from "../api/types";
-import type { FindingsQuery, Severity, Tool } from "../api/types";
-
-const POLL_INTERVAL_MS = 2000;
+import type {
+  FindingsQuery,
+  ScanEvent,
+  ScannerRunState,
+  ScanProgressSnapshot,
+  Severity,
+  Tool,
+} from "../api/types";
 
 export default function ScanDetail() {
   const { id } = useParams<{ id: string }>();
   const scanId = id ?? "";
+  const queryClient = useQueryClient();
 
   const [severity, setSeverity] = useState<Severity | "">("");
   const [tool, setTool] = useState<Tool | "">("");
   const [q, setQ] = useState("");
   const [file, setFile] = useState("");
 
+  // Live per-scanner progress, driven by the SSE stream (no polling).
+  const [scannerStates, setScannerStates] = useState<Partial<Record<Tool, ScannerRunState>>>({});
+  const [scannerFindings, setScannerFindings] = useState<Partial<Record<Tool, number>>>({});
+
   const scanQuery = useQuery({
     queryKey: ["scan", scanId],
     queryFn: () => api.getScan(scanId),
     enabled: !!scanId,
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status === "queued" || status === "running" ? POLL_INTERVAL_MS : false;
-    },
   });
 
   const filters: FindingsQuery = {
@@ -40,11 +47,61 @@ export default function ScanDetail() {
     queryKey: ["findings", scanId, filters],
     queryFn: () => api.getFindings(scanId, filters),
     enabled: !!scanId,
-    refetchInterval: () => {
-      const status = scanQuery.data?.status;
-      return status === "queued" || status === "running" ? POLL_INTERVAL_MS : false;
-    },
   });
+
+  const liveStatus = scanQuery.data?.status;
+  const isActive = liveStatus === "queued" || liveStatus === "running";
+
+  // Subscribe to the SSE progress stream while the scan is active; on the
+  // terminal event, refetch the scan + findings once for the final result.
+  useEffect(() => {
+    if (!scanId || !isActive) return;
+
+    const es = new EventSource(api.scanEventsUrl(scanId));
+
+    const finish = () => {
+      es.close();
+      queryClient.invalidateQueries({ queryKey: ["scan", scanId] });
+      queryClient.invalidateQueries({ queryKey: ["findings", scanId] });
+    };
+
+    es.addEventListener("snapshot", (e) => {
+      try {
+        const snap = JSON.parse((e as MessageEvent).data) as ScanProgressSnapshot;
+        const states: Partial<Record<Tool, ScannerRunState>> = {};
+        const found: Partial<Record<Tool, number>> = {};
+        for (const t of TOOLS) {
+          const s = snap[`scanner:${t}`];
+          if (s) states[t] = s as ScannerRunState;
+          const f = snap[`findings:${t}`];
+          if (f !== undefined) found[t] = Number(f);
+        }
+        setScannerStates(states);
+        setScannerFindings(found);
+      } catch {
+        /* ignore malformed snapshot */
+      }
+    });
+
+    es.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data) as ScanEvent;
+        if (ev.type === "scanner") {
+          setScannerStates((prev) => ({ ...prev, [ev.scanner]: ev.state }));
+          if (ev.findings !== undefined) {
+            setScannerFindings((prev) => ({ ...prev, [ev.scanner]: ev.findings }));
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+
+    es.addEventListener("end", finish);
+    es.onerror = () => es.close(); // degrade quietly; the scan still completes server-side
+
+    return () => es.close();
+  }, [scanId, isActive, queryClient]);
 
   if (scanQuery.isLoading) {
     return <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500">Loading scan...</div>;
@@ -121,8 +178,11 @@ export default function ScanDetail() {
       ) : null}
 
       {scan.status === "queued" || scan.status === "running" ? (
-        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-          Scan is {scan.status}... this page refreshes automatically.
+        <div className="space-y-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3">
+          <p className="text-sm text-blue-700">
+            Scan is {scan.status}… live updates, no refresh needed.
+          </p>
+          <ScannerProgress states={scannerStates} findings={scannerFindings} />
         </div>
       ) : null}
 
