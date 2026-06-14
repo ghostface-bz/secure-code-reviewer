@@ -16,15 +16,8 @@ export default function NewScan() {
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-
-    if (mode === "zip" && !file) {
-      setError("Please choose a .zip file to upload.");
-      return;
-    }
-    if (mode === "git" && !gitUrl.trim()) {
-      setError("Please enter a public git repository URL.");
-      return;
-    }
+    if (mode === "zip" && !file) return setError("Choose a .zip archive to upload.");
+    if (mode === "git" && !gitUrl.trim()) return setError("Enter a public git repository URL.");
 
     setSubmitting(true);
     try {
@@ -34,92 +27,94 @@ export default function NewScan() {
           : await api.createScanFromGit(gitUrl.trim());
       navigate(`/scans/${scan.id}`);
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError(String(err));
-      }
+      setError(err instanceof ApiError ? err.message : String(err));
     } finally {
       setSubmitting(false);
     }
   }
 
-  return (
-    <div className="mx-auto max-w-xl">
-      <h1 className="mb-4 text-2xl font-semibold text-gray-900">New Scan</h1>
+  const modeBtn = (m: SourceMode, label: string) => (
+    <button
+      type="button"
+      onClick={() => setMode(m)}
+      className={`flex-1 border px-3 py-2 text-xs uppercase tracking-[0.14em] transition-colors ${
+        mode === m
+          ? "border-amber/50 bg-amber/10 text-amber"
+          : "border-line text-dim hover:text-ink"
+      }`}
+    >
+      {label}
+    </button>
+  );
 
-      <div className="mb-4 flex gap-2">
-        <button
-          type="button"
-          onClick={() => setMode("zip")}
-          className={`rounded-md px-3 py-2 text-sm font-medium ${
-            mode === "zip"
-              ? "bg-gray-900 text-white"
-              : "bg-white text-gray-700 ring-1 ring-gray-300 hover:bg-gray-50"
-          }`}
-        >
-          Upload .zip
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("git")}
-          className={`rounded-md px-3 py-2 text-sm font-medium ${
-            mode === "git"
-              ? "bg-gray-900 text-white"
-              : "bg-white text-gray-700 ring-1 ring-gray-300 hover:bg-gray-50"
-          }`}
-        >
-          Git URL
-        </button>
+  return (
+    <div className="mx-auto max-w-xl space-y-5">
+      <div>
+        <div className="label">new analysis</div>
+        <h1 className="text-xl font-semibold tracking-tight text-ink">Submit a target</h1>
+        <p className="mt-1 text-xs text-dim">
+          Scanners run in network-isolated sandboxes. No code leaves the host.
+        </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-gray-200 bg-white p-4">
+      <div className="flex gap-px border border-line bg-line">{modeBtn("zip", "Upload .zip")}{modeBtn("git", "Git URL")}</div>
+
+      <form onSubmit={handleSubmit} className="panel panel-lit space-y-4 p-4">
         {mode === "zip" ? (
-          <div>
-            <label htmlFor="zip-file" className="mb-1 block text-sm font-medium text-gray-700">
-              Project archive (.zip, max 50 MB)
-            </label>
+          <label
+            htmlFor="zip-file"
+            className="flex cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-line bg-base px-4 py-8 text-center transition-colors hover:border-amber/50"
+          >
+            <span className="text-2xl text-faint">⤓</span>
+            <span className="text-sm text-ink">
+              {file ? file.name : "Drop or choose a .zip archive"}
+            </span>
+            <span className="text-[0.66rem] uppercase tracking-[0.14em] text-faint">
+              {file ? `${(file.size / 1024 / 1024).toFixed(2)} mb` : "max 50 mb"}
+            </span>
             <input
               id="zip-file"
               type="file"
               accept=".zip,application/zip"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-gray-700"
+              className="hidden"
             />
-            {file ? (
-              <p className="mt-1 text-xs text-gray-500">
-                Selected: {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
-              </p>
-            ) : null}
-          </div>
+          </label>
         ) : (
           <div>
-            <label htmlFor="git-url" className="mb-1 block text-sm font-medium text-gray-700">
-              Public git repository URL
+            <label htmlFor="git-url" className="label mb-1.5 block">
+              Public git repository
             </label>
-            <input
-              id="git-url"
-              type="text"
-              value={gitUrl}
-              onChange={(e) => setGitUrl(e.target.value)}
-              placeholder="https://github.com/owner/repo"
-              className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none"
-            />
+            <div className="flex items-center border border-line bg-base focus-within:border-amber/60">
+              <span className="select-none px-2.5 text-amber">$</span>
+              <input
+                id="git-url"
+                type="text"
+                value={gitUrl}
+                onChange={(e) => setGitUrl(e.target.value)}
+                placeholder="https://github.com/owner/repo"
+                className="field flex-1 border-0 bg-transparent focus:shadow-none"
+              />
+            </div>
           </div>
         )}
 
         {error ? (
-          <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
+          <div className="border border-crit/40 bg-crit/10 px-3 py-2 text-xs text-crit">{error}</div>
         ) : null}
 
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full border border-amber/60 bg-amber/10 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-amber transition-colors hover:bg-amber hover:text-base disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {submitting ? "Submitting..." : "Start Scan"}
+          {submitting ? (
+            <span>
+              dispatching<span className="blink">_</span>
+            </span>
+          ) : (
+            "▸ Run Scan"
+          )}
         </button>
       </form>
     </div>

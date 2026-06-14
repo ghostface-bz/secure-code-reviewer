@@ -8,72 +8,74 @@ import type { ScanListItem } from "../api/types";
 const POLL_INTERVAL_MS = 2000;
 
 function hasActiveScan(scans: ScanListItem[] | undefined): boolean {
-  if (!scans) return false;
-  return scans.some((s) => s.status === "queued" || s.status === "running");
+  return !!scans?.some((s) => s.status === "queued" || s.status === "running");
 }
 
 export default function ScanList() {
   const navigate = useNavigate();
-  const { data, error, isLoading, isFetching } = useQuery({
+  const { data, error, isLoading } = useQuery({
     queryKey: ["scans"],
     queryFn: () => api.listScans(),
     refetchInterval: (query) => (hasActiveScan(query.state.data) ? POLL_INTERVAL_MS : false),
   });
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">Scans</h1>
+    <div className="space-y-5">
+      <div className="flex items-end justify-between">
+        <div>
+          <div className="label">registry</div>
+          <h1 className="text-xl font-semibold tracking-tight text-ink">Scans</h1>
+        </div>
         <Link
           to="/new"
-          className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"
+          className="border border-amber/50 px-3 py-2 text-xs uppercase tracking-[0.14em] text-amber transition-colors hover:bg-amber hover:text-base"
         >
-          New Scan
+          + New Scan
         </Link>
       </div>
 
       {isLoading ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500">
-          Loading scans...
+        <div className="panel px-4 py-10 text-center text-sm text-dim">
+          loading registry<span className="blink">_</span>
         </div>
       ) : error ? (
-        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error instanceof ApiError
-            ? `API unreachable: ${error.message}`
-            : `Failed to load scans: ${String(error)}`}
+        <div className="border border-crit/40 bg-crit/10 px-4 py-3 text-sm text-crit">
+          {error instanceof ApiError ? `API unreachable — ${error.message}` : `Failed to load: ${String(error)}`}
         </div>
       ) : !data || data.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500">
+        <div className="panel px-4 py-10 text-center text-sm text-dim">
           No scans yet.{" "}
-          <Link to="/new" className="font-medium text-gray-900 underline">
-            Start one
+          <Link to="/new" className="text-amber hover:underline">
+            Start one →
           </Link>
-          .
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-              <tr>
-                <th className="px-4 py-2">Source</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2">Findings</th>
-                <th className="px-4 py-2">Created</th>
+        <div className="panel panel-lit overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-line text-faint">
+                <th className="px-4 py-2.5 text-[0.62rem] font-semibold uppercase tracking-[0.16em]">Source</th>
+                <th className="px-4 py-2.5 text-[0.62rem] font-semibold uppercase tracking-[0.16em]">Status</th>
+                <th className="px-4 py-2.5 text-[0.62rem] font-semibold uppercase tracking-[0.16em]">Severity</th>
+                <th className="px-4 py-2.5 text-[0.62rem] font-semibold uppercase tracking-[0.16em]">Created</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {data.map((scan) => (
+            <tbody>
+              {data.map((scan, i) => (
                 <tr
                   key={scan.id}
-                  className="cursor-pointer hover:bg-gray-50"
                   onClick={() => navigate(`/scans/${scan.id}`)}
+                  className="row-in cursor-pointer border-b border-line/60 transition-colors last:border-0 hover:bg-raised/60"
+                  style={{ animationDelay: `${Math.min(i, 12) * 28}ms` }}
                 >
                   <td className="px-4 py-3">
-                    <Link to={`/scans/${scan.id}`} className="font-medium text-gray-900 hover:underline">
-                      {scan.source_type === "git" ? "git: " : "zip: "}
-                      {scan.source_ref}
-                    </Link>
-                    <div className="text-xs text-gray-400">{scan.id}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[0.6rem] uppercase tracking-wider text-amber">
+                        {scan.source_type}
+                      </span>
+                      <span className="truncate font-medium text-ink">{scan.source_ref}</span>
+                    </div>
+                    <div className="mt-0.5 text-[0.66rem] text-faint">{scan.id}</div>
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={scan.status} />
@@ -81,7 +83,7 @@ export default function ScanList() {
                   <td className="px-4 py-3">
                     <SeveritySummaryInline counts={scan.counts} />
                   </td>
-                  <td className="px-4 py-3 text-gray-500">
+                  <td className="px-4 py-3 text-xs text-dim">
                     {new Date(scan.created_at).toLocaleString()}
                   </td>
                 </tr>
@@ -90,9 +92,6 @@ export default function ScanList() {
           </table>
         </div>
       )}
-      {isFetching && !isLoading ? (
-        <p className="mt-2 text-xs text-gray-400">Refreshing...</p>
-      ) : null}
     </div>
   );
 }

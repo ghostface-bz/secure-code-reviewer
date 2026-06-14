@@ -1,17 +1,208 @@
+/* ── Forensic Terminal — design system ──────────────────────────────────────
+   Warm charcoal console, single amber signal, IBM Plex Mono/Sans, hairline grid.
+   Deliberately NOT the github-blue cyber-neon cliché.                          */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
+@theme {
+  --color-base: oklch(0.16 0.008 70);
+  --color-panel: oklch(0.205 0.009 70);
+  --color-raised: oklch(0.245 0.01 70);
+  --color-line: oklch(0.31 0.012 72);
+  --color-line-bright: oklch(0.43 0.016 75);
+  --color-ink: oklch(0.93 0.012 85);
+  --color-dim: oklch(0.67 0.012 80);
+  --color-faint: oklch(0.5 0.01 80);
+
+  --color-amber: oklch(0.81 0.15 76);
+  --color-amber-deep: oklch(0.66 0.14 66);
+
+  --color-crit: oklch(0.65 0.21 25);
+  --color-high: oklch(0.73 0.17 52);
+  --color-med: oklch(0.84 0.14 90);
+  --color-low: oklch(0.74 0.08 226);
+  --color-info: oklch(0.62 0.012 80);
+  --color-ok: oklch(0.8 0.16 146);
+
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
 :root {
-  color-scheme: light;
+  color-scheme: dark;
+}
+
+html {
+  background: var(--color-base);
 }
 
 body {
   margin: 0;
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    Helvetica,
-    Arial,
-    sans-serif;
+  font-family: var(--font-mono);
+  background: var(--color-base);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Atmosphere: a faint vignette + hairline scanlines. Subtle — texture, not noise. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 50% -10%, oklch(0.26 0.02 72 / 0.5), transparent 60%),
+    radial-gradient(100% 60% at 100% 100%, oklch(0.2 0.03 66 / 0.35), transparent 55%);
+}
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.4;
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent 0 3px,
+    oklch(0 0 0 / 0.035) 3px 4px
+  );
+}
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+::selection {
+  background: var(--color-amber);
+  color: var(--color-base);
+}
+
+/* Thin, warm scrollbars to match the console feel. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-bright) transparent;
+}
+*::-webkit-scrollbar {
+  height: 9px;
+  width: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-line-bright);
+  border-radius: 0;
+}
+
+/* ── reusable primitives ─────────────────────────────────────────────────── */
+
+.panel {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+}
+
+/* Top hairline lit in amber — the "instrument" cue on key panels. */
+.panel-lit {
+  position: relative;
+}
+.panel-lit::before {
+  content: "";
+  position: absolute;
+  inset: -1px -1px auto -1px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-amber) 20%,
+    var(--color-amber) 80%,
+    transparent
+  );
+  opacity: 0.55;
+}
+
+.label {
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Live status dot. */
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: currentColor;
+  box-shadow: 0 0 0 0 currentColor;
+}
+.dot-live {
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklch, currentColor 70%, transparent); }
+  70% { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* Indeterminate sweep for a running scanner bar. */
+.sweep {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-raised);
+}
+.sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--color-amber) 55%, transparent),
+    transparent
+  );
+  animation: sweep-x 1.25s ease-in-out infinite;
+}
+@keyframes sweep-x {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+/* Staggered row reveal on first paint. */
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+.row-in {
+  animation: row-in 0.34s both;
+}
+
+.blink {
+  animation: blink 1.1s step-end infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* Form controls — flat, square, console-style. */
+.field {
+  background: var(--color-base);
+  border: 1px solid var(--color-line);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 0.5rem 0.6rem;
+  outline: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.field:focus {
+  border-color: var(--color-amber);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-amber) 35%, transparent);
+}
+.field::placeholder {
+  color: var(--color-faint);
 }

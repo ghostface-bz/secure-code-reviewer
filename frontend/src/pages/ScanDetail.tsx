@@ -17,6 +17,15 @@ import type {
   TriageStatus,
 } from "../api/types";
 
+function MetaCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-panel px-3 py-2.5">
+      <div className="label">{label}</div>
+      <div className="mt-0.5 truncate text-xs text-ink">{value}</div>
+    </div>
+  );
+}
+
 export default function ScanDetail() {
   const { id } = useParams<{ id: string }>();
   const scanId = id ?? "";
@@ -29,7 +38,6 @@ export default function ScanDetail() {
   const [triageStatus, setTriageStatus] = useState<TriageStatus | "">("");
   const [newOnly, setNewOnly] = useState(false);
 
-  // Live per-scanner progress, driven by the SSE stream (no polling).
   const [scannerStates, setScannerStates] = useState<Partial<Record<Tool, ScannerRunState>>>({});
   const [scannerFindings, setScannerFindings] = useState<Partial<Record<Tool, number>>>({});
 
@@ -57,19 +65,14 @@ export default function ScanDetail() {
   const triageMutation = useMutation({
     mutationFn: ({ findingId, status }: { findingId: string; status: TriageStatus }) =>
       api.updateTriage(scanId, findingId, status),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["findings", scanId] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["findings", scanId] }),
   });
 
   const liveStatus = scanQuery.data?.status;
   const isActive = liveStatus === "queued" || liveStatus === "running";
 
-  // Subscribe to the SSE progress stream while the scan is active; on the
-  // terminal event, refetch the scan + findings once for the final result.
   useEffect(() => {
     if (!scanId || !isActive) return;
-
     const es = new EventSource(api.scanEventsUrl(scanId));
 
     const finish = () => {
@@ -111,262 +114,189 @@ export default function ScanDetail() {
     };
 
     es.addEventListener("end", finish);
-    es.onerror = () => es.close(); // degrade quietly; the scan still completes server-side
-
+    es.onerror = () => es.close();
     return () => es.close();
   }, [scanId, isActive, queryClient]);
 
   if (scanQuery.isLoading) {
-    return <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500">Loading scan...</div>;
+    return (
+      <div className="panel px-4 py-10 text-center text-sm text-dim">
+        loading scan<span className="blink">_</span>
+      </div>
+    );
   }
 
   if (scanQuery.error) {
     const err = scanQuery.error;
     return (
-      <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+      <div className="border border-crit/40 bg-crit/10 px-4 py-3 text-sm text-crit">
         {err instanceof ApiError
           ? err.status === 404
             ? "Scan not found."
-            : `API unreachable: ${err.message}`
+            : `API unreachable — ${err.message}`
           : `Failed to load scan: ${String(err)}`}
       </div>
     );
   }
 
   const scan = scanQuery.data;
-  if (!scan) {
-    return null;
-  }
+  if (!scan) return null;
+
+  const fmt = (s: string | null) => (s ? new Date(s).toLocaleString() : "—");
 
   return (
     <div className="space-y-6">
       <div>
-        <Link to="/" className="text-sm text-gray-500 hover:underline">
-          &larr; Back to scans
+        <Link to="/" className="text-xs uppercase tracking-[0.14em] text-faint hover:text-amber">
+          ← registry
         </Link>
-        <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900 break-all">
-              {scan.source_type === "git" ? "git: " : "zip: "}
-              {scan.source_ref}
-            </h1>
-            <p className="text-xs text-gray-400">{scan.id}</p>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[0.6rem] uppercase tracking-wider text-amber">{scan.source_type}</span>
+              <h1 className="truncate text-lg font-semibold tracking-tight text-ink">{scan.source_ref}</h1>
+            </div>
+            <p className="mt-0.5 text-[0.66rem] text-faint">{scan.id}</p>
           </div>
           <div className="flex items-center gap-2">
             <StatusBadge status={scan.status} />
             <a
               href={api.sarifUrl(scan.id)}
               download
-              className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"
+              className="border border-line px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-dim transition-colors hover:border-amber/50 hover:text-amber"
             >
-              Download SARIF
+              ↓ SARIF
             </a>
           </div>
         </div>
       </div>
 
-      <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-        <div className="rounded-lg border border-gray-200 bg-white p-3">
-          <dt className="text-xs uppercase text-gray-500">Created</dt>
-          <dd className="text-gray-900">{new Date(scan.created_at).toLocaleString()}</dd>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-3">
-          <dt className="text-xs uppercase text-gray-500">Started</dt>
-          <dd className="text-gray-900">{scan.started_at ? new Date(scan.started_at).toLocaleString() : "—"}</dd>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-3">
-          <dt className="text-xs uppercase text-gray-500">Finished</dt>
-          <dd className="text-gray-900">{scan.finished_at ? new Date(scan.finished_at).toLocaleString() : "—"}</dd>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-3">
-          <dt className="text-xs uppercase text-gray-500">Source type</dt>
-          <dd className="text-gray-900 capitalize">{scan.source_type}</dd>
-        </div>
-      </dl>
+      <div className="grid grid-cols-2 gap-px border border-line bg-line sm:grid-cols-4">
+        <MetaCell label="created" value={fmt(scan.created_at)} />
+        <MetaCell label="started" value={fmt(scan.started_at)} />
+        <MetaCell label="finished" value={fmt(scan.finished_at)} />
+        <MetaCell label="source" value={scan.source_type} />
+      </div>
 
       {scan.status === "failed" && scan.error ? (
-        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <strong>Error:</strong> {scan.error}
+        <div className="border border-crit/40 bg-crit/10 px-4 py-3 text-sm text-crit">
+          <span className="label text-crit">error</span>
+          <div className="mt-1">{scan.error}</div>
         </div>
       ) : null}
 
       {scan.status === "queued" || scan.status === "running" ? (
-        <div className="space-y-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3">
-          <p className="text-sm text-blue-700">
-            Scan is {scan.status}… live updates, no refresh needed.
-          </p>
+        <div className="panel panel-lit space-y-3 p-4">
+          <div className="flex items-center gap-2">
+            <span className="dot dot-live text-amber" />
+            <span className="label text-amber">analysis in progress — live</span>
+          </div>
           <ScannerProgress states={scannerStates} findings={scannerFindings} />
         </div>
       ) : null}
 
-      <div>
-        <h2 className="mb-2 text-lg font-semibold text-gray-900">Severity summary</h2>
+      <section className="space-y-2">
+        <div className="label">severity breakdown</div>
         <SeveritySummaryCards counts={scan.counts} />
-      </div>
+      </section>
 
-      <div>
-        <h2 className="mb-2 text-lg font-semibold text-gray-900">Findings</h2>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="label">findings{findingsQuery.data ? ` · ${findingsQuery.data.length}` : ""}</div>
+        </div>
 
-        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div>
-            <label htmlFor="filter-severity" className="mb-1 block text-xs font-medium text-gray-500">
-              Severity
-            </label>
-            <select
-              id="filter-severity"
-              value={severity}
-              onChange={(e) => setSeverity(e.target.value as Severity | "")}
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
-            >
-              <option value="">All</option>
-              {SEVERITIES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="filter-tool" className="mb-1 block text-xs font-medium text-gray-500">
-              Tool
-            </label>
-            <select
-              id="filter-tool"
-              value={tool}
-              onChange={(e) => setTool(e.target.value as Tool | "")}
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
-            >
-              <option value="">All</option>
-              {TOOLS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="filter-file" className="mb-1 block text-xs font-medium text-gray-500">
-              File contains
-            </label>
-            <input
-              id="filter-file"
-              type="text"
-              value={file}
-              onChange={(e) => setFile(e.target.value)}
-              placeholder="e.g. app/db.py"
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label htmlFor="filter-q" className="mb-1 block text-xs font-medium text-gray-500">
-              Search title / message
-            </label>
-            <input
-              id="filter-q"
-              type="text"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="e.g. SQL injection"
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label htmlFor="filter-triage" className="mb-1 block text-xs font-medium text-gray-500">
-              Triage
-            </label>
-            <select
-              id="filter-triage"
-              value={triageStatus}
-              onChange={(e) => setTriageStatus(e.target.value as TriageStatus | "")}
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
-            >
-              <option value="">All</option>
-              {TRIAGE_STATUSES.map((t) => (
-                <option key={t} value={t}>
-                  {TRIAGE_LABELS[t]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-end">
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+        <div className="panel grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-6">
+          <Selectish label="severity" value={severity} onChange={(v) => setSeverity(v as Severity | "")} options={SEVERITIES} />
+          <Selectish label="tool" value={tool} onChange={(v) => setTool(v as Tool | "")} options={TOOLS} />
+          <Selectish
+            label="triage"
+            value={triageStatus}
+            onChange={(v) => setTriageStatus(v as TriageStatus | "")}
+            options={TRIAGE_STATUSES}
+            labels={TRIAGE_LABELS}
+          />
+          <Inputish label="file" value={file} onChange={setFile} placeholder="app/db.py" />
+          <Inputish label="search" value={q} onChange={setQ} placeholder="sql injection" />
+          <label className="flex cursor-pointer flex-col justify-end gap-1.5 pb-1">
+            <span className="label">baseline</span>
+            <span className="flex items-center gap-2 text-xs text-ink">
               <input
                 type="checkbox"
                 checked={newOnly}
                 onChange={(e) => setNewOnly(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300"
+                className="h-3.5 w-3.5 accent-amber"
               />
-              New since last scan
-            </label>
-          </div>
+              new only
+            </span>
+          </label>
         </div>
 
         {findingsQuery.isLoading ? (
-          <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500">
-            Loading findings...
+          <div className="panel px-4 py-8 text-center text-sm text-dim">
+            loading findings<span className="blink">_</span>
           </div>
         ) : findingsQuery.error ? (
-          <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="border border-crit/40 bg-crit/10 px-4 py-3 text-sm text-crit">
             {findingsQuery.error instanceof ApiError
-              ? `API unreachable: ${findingsQuery.error.message}`
+              ? `API unreachable — ${findingsQuery.error.message}`
               : `Failed to load findings: ${String(findingsQuery.error)}`}
           </div>
         ) : !findingsQuery.data || findingsQuery.data.length === 0 ? (
-          <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500">
+          <div className="panel px-4 py-8 text-center text-sm text-dim">
             {scan.status === "completed" || scan.status === "failed"
               ? "No findings match the current filters."
-              : "No findings yet."}
+              : "No findings yet — scanners are still running."}
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-                <tr>
-                  <th className="px-3 py-2">Tool</th>
-                  <th className="px-3 py-2">Severity</th>
-                  <th className="px-3 py-2">Title</th>
-                  <th className="px-3 py-2">File:Line</th>
-                  <th className="px-3 py-2">CWE</th>
-                  <th className="px-3 py-2">OWASP</th>
-                  <th className="px-3 py-2">Triage</th>
+          <div className="panel panel-lit overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-line text-faint">
+                  {["sev", "tool", "finding", "file:line", "cwe", "owasp", "triage"].map((h) => (
+                    <th key={h} className="px-3 py-2.5 text-[0.6rem] font-semibold uppercase tracking-[0.16em]">
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {findingsQuery.data.map((finding) => (
+              <tbody>
+                {findingsQuery.data.map((finding, i) => (
                   <tr
                     key={finding.id}
-                    className={`align-top hover:bg-gray-50 ${
-                      finding.triage_status !== "open" ? "opacity-50" : ""
+                    className={`row-in border-b border-line/50 align-top transition-colors last:border-0 hover:bg-raised/50 ${
+                      finding.triage_status !== "open" ? "opacity-45" : ""
                     }`}
+                    style={{ animationDelay: `${Math.min(i, 16) * 22}ms` }}
                   >
-                    <td className="px-3 py-2 whitespace-nowrap text-gray-700">{finding.tool}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <SeverityBadge severity={finding.severity} />
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <SeverityBadge severity={finding.severity} compact />
                     </td>
-                    <td className="px-3 py-2">
-                      <div className="font-medium text-gray-900">{finding.title}</div>
-                      <div className="text-xs text-gray-500">{finding.message}</div>
-                      <div className="text-xs text-gray-400">{finding.rule_id}</div>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-xs text-dim">{finding.tool}</td>
+                    <td className="max-w-md px-3 py-2.5">
+                      <div className="font-medium text-ink">{finding.title}</div>
+                      <div className="mt-0.5 text-pretty font-sans text-xs text-dim">
+                        {finding.message}
+                      </div>
+                      <div className="mt-0.5 text-[0.62rem] text-faint">{finding.rule_id}</div>
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap font-mono text-xs text-gray-700">
+                    <td className="px-3 py-2.5 whitespace-nowrap text-xs text-amber/90">
                       {finding.file_path}
-                      {finding.line_start ? `:${finding.line_start}` : ""}
-                      {finding.line_end && finding.line_end !== finding.line_start ? `-${finding.line_end}` : ""}
+                      {finding.line_start ? <span className="text-faint">:{finding.line_start}</span> : ""}
+                      {finding.line_end && finding.line_end !== finding.line_start ? (
+                        <span className="text-faint">-{finding.line_end}</span>
+                      ) : null}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-gray-700">{finding.cwe ?? "—"}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-gray-700">{finding.owasp ?? "—"}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">
+                    <td className="px-3 py-2.5 whitespace-nowrap text-xs text-dim">{finding.cwe ?? "—"}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-xs text-dim">{finding.owasp ?? "—"}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
                       <select
                         aria-label="Triage status"
                         value={finding.triage_status}
                         disabled={triageMutation.isPending}
                         onChange={(e) =>
-                          triageMutation.mutate({
-                            findingId: finding.id,
-                            status: e.target.value as TriageStatus,
-                          })
+                          triageMutation.mutate({ findingId: finding.id, status: e.target.value as TriageStatus })
                         }
-                        className="rounded-md border border-gray-300 px-1.5 py-1 text-xs text-gray-900 focus:border-gray-500 focus:outline-none"
+                        className="field py-1 text-[0.66rem]"
                       >
                         {TRIAGE_STATUSES.map((t) => (
                           <option key={t} value={t}>
@@ -381,7 +311,60 @@ export default function ScanDetail() {
             </table>
           </div>
         )}
-      </div>
+      </section>
+    </div>
+  );
+}
+
+function Selectish({
+  label,
+  value,
+  onChange,
+  options,
+  labels,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly string[];
+  labels?: Record<string, string>;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="label">{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="field">
+        <option value="">all</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {labels ? labels[o] : o}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function Inputish({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="label">{label}</span>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="field"
+      />
     </div>
   );
 }

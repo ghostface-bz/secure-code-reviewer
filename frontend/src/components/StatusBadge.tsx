@@ -1,17 +1,26 @@
 import type { ScanStatus } from "../api/types";
 
-const STATUS_STYLES: Record<ScanStatus, string> = {
-  queued: "bg-gray-100 text-gray-700 border-gray-300",
-  running: "bg-blue-100 text-blue-800 border-blue-300 animate-pulse",
-  completed: "bg-green-100 text-green-800 border-green-300",
-  failed: "bg-red-100 text-red-800 border-red-300",
+interface Meta {
+  cls: string;
+  text: string;
+  live?: boolean;
+}
+
+const META: Record<ScanStatus, Meta> = {
+  queued: { cls: "border-line text-faint", text: "text-faint" },
+  running: { cls: "border-amber/40 text-amber", text: "text-amber", live: true },
+  completed: { cls: "border-ok/40 text-ok", text: "text-ok" },
+  failed: { cls: "border-crit/40 text-crit", text: "text-crit" },
 };
 
+/** Scan status — bracketed console pill with a (pulsing) state dot. */
 export default function StatusBadge({ status }: { status: ScanStatus }) {
+  const m = META[status];
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[status]}`}
+      className={`inline-flex items-center gap-2 border px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.18em] ${m.cls}`}
     >
+      <span className={`dot ${m.live ? "dot-live" : ""} ${m.text}`} />
       {status}
     </span>
   );
