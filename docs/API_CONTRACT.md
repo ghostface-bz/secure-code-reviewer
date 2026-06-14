@@ -32,20 +32,36 @@ Same shape as a list item, plus `"started_at"`, `"error"`. `404` if missing.
 (Frontend polls this while `status` is `queued`/`running`.)
 
 ### `GET /api/scans/{id}/findings` — findings for a scan
-Query filters (all optional, combinable): `severity`, `tool`, `cwe`, `file` (substring), `q` (text in title/message).
+Query filters (all optional, combinable): `severity`, `tool`, `cwe`, `file` (substring),
+`q` (text in title/message), `triage_status` (open|false_positive|resolved|suppressed),
+`new_only` (bool — only findings whose fingerprint was not in the prior completed scan of
+the same `source_ref` that finished before this one).
 → `200` array of:
 ```json
 {
   "id": "<uuid>", "tool": "semgrep", "rule_id": "python.lang.security.audit...",
   "severity": "high", "title": "...", "message": "...",
   "file_path": "app/db.py", "line_start": 42, "line_end": 42,
-  "cwe": "CWE-89", "owasp": "A03:2021-Injection"
+  "cwe": "CWE-89", "owasp": "A03:2021-Injection",
+  "triage_status": "open", "triage_note": null, "triaged_at": null
 }
 ```
 (`raw` is NOT returned in the list; available via the report export.)
 
+### `PATCH /api/scans/{id}/findings/{finding_id}` — set triage state
+Body: `{ "triage_status": "false_positive", "triage_note": "optional reason" }`
+→ `200` the updated finding (same shape as above). `404` if the finding isn't in this scan.
+Triage state is inherited by fingerprint when the same `source_ref` is re-scanned.
+
+### `GET /api/scans/{id}/events` — live progress (Server-Sent Events)
+`text/event-stream`. Emits an `event: snapshot` (current per-scanner state), then default
+`message` events `{type:"scanner",scanner,state,findings?}` / `{type:"scan",state,counts?}`
+as the scan runs, a 15 s heartbeat comment, and `event: end` when terminal. Already-terminal
+scans get `snapshot` + `end` immediately. (The UI uses this instead of polling.)
+
 ### `GET /api/scans/{id}/report.sarif` — SARIF 2.1.0 export (REQUIRED)
 → `200` `application/json`, valid SARIF with one `run` per tool.
+Findings triaged `suppressed` or `false_positive` are excluded from the export.
 
 ### `GET /api/scans/{id}/report.pdf` — PDF report (STRETCH, Phase 5)
 → `200` `application/pdf`. May 501 until implemented.
