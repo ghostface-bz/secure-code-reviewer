@@ -5,6 +5,7 @@ import type {
   ScanCreateResponse,
   ScanDetail,
   ScanListItem,
+  SourceSnippet,
   TriageStatus,
 } from "./types";
 
@@ -133,6 +134,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ triage_status, triage_note: triage_note ?? null }),
     });
+  },
+
+  /** GET /api/scans/{id}/source — a code window around a finding's line */
+  getSource(id: string, path: string, line: number): Promise<SourceSnippet> {
+    const qs = buildQuery({ path, line: String(line) });
+    return request<SourceSnippet>(`/scans/${id}/source${qs}`);
   },
 
   /** SSE endpoint URL for live scan progress — open with `new EventSource(...)` */

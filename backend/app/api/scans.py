@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
 import zipfile
@@ -362,6 +363,47 @@ def update_finding_triage(
     db.commit()
     db.refresh(finding)
     return FindingOut.model_validate(finding)
+
+
+@router.get("/{scan_id}/source")
+def get_source(
+    scan_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    path: Annotated[str, Query()],
+    line: Annotated[int, Query()] = 0,
+    ctx: Annotated[int, Query()] = 6,
+) -> Response:
+    """Return a small code window around `line` of `path` within the scanned tree.
+
+    Reads from the materialized scan directory, guarded against path traversal.
+    Used by the finding-detail code panel.
+    """
+    scan = db.get(Scan, scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found.")
+
+    base = (Path(settings.SCAN_DATA_DIR) / str(scan_id)).resolve()
+    target = (base / path).resolve()
+    if target != base and not str(target).startswith(str(base) + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid path.")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Source not available for this scan.")
+    if target.stat().st_size > 5_000_000:
+        raise HTTPException(status_code=413, detail="File too large to preview.")
+
+    try:
+        all_lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        raise HTTPException(status_code=404, detail="Source not readable.")
+
+    focus = line if line and 1 <= line <= len(all_lines) else 0
+    pivot = focus or 1
+    start = max(1, pivot - ctx)
+    end = min(len(all_lines), pivot + ctx)
+    window = [{"n": n, "text": all_lines[n - 1]} for n in range(start, end + 1)]
+    return JSONResponse(
+        content={"path": path, "focus": focus, "start": start, "lines": window, "total": len(all_lines)}
+    )
 
 
 @router.get("/{scan_id}/report.sarif")

@@ -37,10 +37,8 @@ export default function NewScan() {
     <button
       type="button"
       onClick={() => setMode(m)}
-      className={`flex-1 border px-3 py-2 text-xs uppercase tracking-[0.14em] transition-colors ${
-        mode === m
-          ? "border-amber/50 bg-amber/10 text-amber"
-          : "border-line text-dim hover:text-ink"
+      className={`flex-1 rounded-md px-3 py-2 text-[12.5px] font-medium transition-colors ${
+        mode === m ? "bg-lime text-base" : "text-dim hover:text-ink"
       }`}
     >
       {label}
@@ -48,72 +46,58 @@ export default function NewScan() {
   );
 
   return (
-    <div className="mx-auto max-w-xl space-y-5">
-      <div>
-        <div className="label">new analysis</div>
-        <h1 className="text-xl font-semibold tracking-tight text-ink">Submit a target</h1>
-        <p className="mt-1 text-xs text-dim">
-          Scanners run in network-isolated sandboxes. No code leaves the host.
-        </p>
+    <div className="mx-auto max-w-xl px-8 pb-12 pt-7">
+      <h1 className="m-0 text-[23px] font-semibold tracking-tight text-head">New scan</h1>
+      <p className="m-0 mb-5 mt-1 text-[13.5px] text-faint">
+        Scanners run in network-isolated sandboxes — no code leaves the host.
+      </p>
+
+      <div className="mb-3.5 flex gap-0.5 rounded-lg border border-line2 bg-bar p-[3px]">
+        {modeBtn("zip", "Upload .zip")}
+        {modeBtn("git", "Git URL")}
       </div>
 
-      <div className="flex gap-px border border-line bg-line">{modeBtn("zip", "Upload .zip")}{modeBtn("git", "Git URL")}</div>
-
-      <form onSubmit={handleSubmit} className="panel panel-lit space-y-4 p-4">
+      <form onSubmit={handleSubmit} className="card space-y-4 p-4">
         {mode === "zip" ? (
           <label
             htmlFor="zip-file"
-            className="flex cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-line bg-base px-4 py-8 text-center transition-colors hover:border-amber/50"
+            className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line2 bg-bar px-4 py-9 text-center transition-colors hover:border-lime/50"
           >
-            <span className="text-2xl text-faint">⤓</span>
-            <span className="text-sm text-ink">
-              {file ? file.name : "Drop or choose a .zip archive"}
-            </span>
-            <span className="text-[0.66rem] uppercase tracking-[0.14em] text-faint">
-              {file ? `${(file.size / 1024 / 1024).toFixed(2)} mb` : "max 50 mb"}
-            </span>
-            <input
-              id="zip-file"
-              type="file"
-              accept=".zip,application/zip"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="hidden"
-            />
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7c828c" strokeWidth="1.6"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>
+            <span className="text-[13.5px] text-ink">{file ? file.name : "Drop or choose a .zip archive"}</span>
+            <span className="text-[11px] uppercase tracking-wide text-fainter">{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : "max 50 MB"}</span>
+            <input id="zip-file" type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="hidden" />
           </label>
         ) : (
           <div>
-            <label htmlFor="git-url" className="label mb-1.5 block">
-              Public git repository
-            </label>
-            <div className="flex items-center border border-line bg-base focus-within:border-amber/60">
-              <span className="select-none px-2.5 text-amber">$</span>
+            <label htmlFor="git-url" className="mb-1.5 block text-[12px] font-medium text-faint">Public git repository</label>
+            <div className="flex items-center rounded-lg border border-line2 bg-bar focus-within:border-lime/55">
+              <span className="mono select-none px-2.5 text-lime">$</span>
               <input
                 id="git-url"
                 type="text"
                 value={gitUrl}
                 onChange={(e) => setGitUrl(e.target.value)}
                 placeholder="https://github.com/owner/repo"
-                className="field flex-1 border-0 bg-transparent focus:shadow-none"
+                className="mono flex-1 border-0 bg-transparent py-2.5 pr-3 text-[13px] text-ink outline-none placeholder:text-fainter"
               />
             </div>
           </div>
         )}
 
-        {error ? (
-          <div className="border border-crit/40 bg-crit/10 px-3 py-2 text-xs text-crit">{error}</div>
-        ) : null}
+        {error ? <div className="rounded-lg border border-crit/30 bg-crit/10 px-3 py-2 text-[12.5px] text-crit">{error}</div> : null}
 
         <button
           type="submit"
           disabled={submitting}
-          className="w-full border border-amber/60 bg-amber/10 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-amber transition-colors hover:bg-amber hover:text-base disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-lime px-4 py-2.5 text-[13px] font-semibold text-base transition-colors hover:bg-lime-bright disabled:cursor-not-allowed disabled:opacity-50"
+          style={{ boxShadow: "0 4px 14px rgba(196,242,74,.18)" }}
         >
-          {submitting ? (
-            <span>
-              dispatching<span className="blink">_</span>
-            </span>
-          ) : (
-            "▸ Run Scan"
+          {submitting ? <>dispatching<span className="blink">_</span></> : (
+            <>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#0a0b0d" stroke="#0a0b0d" strokeWidth="2"><path d="M5 4v16M5 4l13 8-13 8" /></svg>
+              Run scan
+            </>
           )}
         </button>
       </form>

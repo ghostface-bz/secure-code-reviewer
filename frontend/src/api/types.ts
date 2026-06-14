@@ -79,6 +79,19 @@ export interface HealthResponse {
   status: string;
 }
 
+export interface SourceLine {
+  n: number;
+  text: string;
+}
+
+export interface SourceSnippet {
+  path: string;
+  focus: number;
+  start: number;
+  lines: SourceLine[];
+  total: number;
+}
+
 // ---- Live scan progress (SSE) ----
 
 export type ScannerRunState = "pending" | "running" | "done" | "error";
