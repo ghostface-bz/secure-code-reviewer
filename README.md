@@ -1,10 +1,20 @@
-# Secure Code Reviewer
+<p align="center">
+  <img src="assets/caret-icon.svg" width="76" height="76" alt="caret logo" />
+</p>
 
-A self-hostable platform that runs static security analysis on a codebase and presents
-normalized, CWE/OWASP-mapped findings in a dashboard. Upload a `.zip` or point it at a
-public Git repo; the platform runs multiple open-source scanners **inside isolated,
-network-less Docker sandboxes**, normalizes their wildly different output into one schema,
-and lets you browse, filter, and export the results (SARIF + report).
+<h1 align="center">caret</h1>
+
+<p align="center">
+  Self-hostable static code analysis — multi-scanner SAST, secret &amp; dependency
+  scanning with normalized, CWE/OWASP-mapped findings.
+</p>
+
+---
+
+Upload a `.zip` or point it at a public Git repo; caret runs multiple open-source
+scanners **inside isolated, network-less Docker sandboxes**, normalizes their wildly
+different output into one schema, and lets you browse, filter, and export the results
+(SARIF + report).
 
 > Bachelor project. **Functionality first** — the analysis pipeline and sandbox isolation
 > are the point; visual polish comes after it works.

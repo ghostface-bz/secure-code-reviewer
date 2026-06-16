@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Caret app icon">
+  <rect width="64" height="64" rx="16" fill="#c4f24a"></rect>
+  <g transform="translate(14 14) scale(1.5)" fill="none" stroke="#0a0b0d" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5.5 16.5 H18.5"></path>
+    <path d="M7.5 13 L12 6 L16.5 13"></path>
+    <path d="M12 6 V3.5"></path>
+  </g>
+</svg>
